@@ -1,0 +1,373 @@
+---
+title: "Darstellung der IMPP-Ergebnisse (Medizin) im Hochschulvergleich"
+author: "Dr. rer. nat. Tobias Leutritz, Institut für Medizinische Lehre und Ausbildungsforschung, Uniklinikum Würzburg"
+output: 
+  html_document:
+    number_sections: true
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    self_contained: true
+---
+```{r preparation, echo=F, message=FALSE}
+require(openxlsx)
+require(dplyr)
+require(ggplot2)
+require(plotly)
+require(forcats)
+
+# function for proper hover display and conversion to plotly
+prop_plot <- function(gg) {
+  ggply = ggplotly(gg, tooltip = c("colour", "y"), dynamicTicks = T)
+  for (i in 1:(length(ggply$x$data)/2)) ggply$x$data[[i]]$hoverinfo <- "none" 
+  # https://stackoverflow.com/questions/45801389/disable-hover-information-for-a-specific-layer-geom-of-plotly/45802923
+  return(ggply %>% highlight(defaultValues = c("Gesamt", "Würzburg"), selectize = T, persistent = T, dynamic = F, on = "plotly_click", off = "plotly_doubleclick", selected = attrs_selected(showlegend = F)) %>% layout(showlegend = T))
+}
+
+variables.M1 = c("TN_ges_M1","Miss_ges_abs_M1","Miss_ges_rel_M1","MW_ges_abs_M1","MW_ges_rel_M1","SD_ges_M1","TN_ref_M1","Miss_ref_abs_M1","Miss_ref_rel_M1","MW_ref_abs_M1","MW_ref_rel_M1","SD_ref_M1","Anat_M1","Biol_M1","Chem_M1","Physik_M1","Physio_M1","Psych_M1")
+variables.M2 = c("TN_ges_M2","Miss_ges_abs_M2","Miss_ges_rel_M2","MW_ges_abs_M2","MW_ges_rel_M2","SD_ges_M2","TN_ref_M2","Miss_ref_abs_M2","Miss_ref_rel_M2","MW_ref_abs_M2","MW_ref_rel_M2","SD_ref_M2","Fall_M2","Einz_M2")
+
+M1.years = read.xlsx("M1M2.xlsx", sheet = "M1_Bestehen", startRow = 2)
+M1.years = unname(M1.years$Phase)
+M2.years = read.xlsx("M1M2.xlsx", sheet = "M2_Bestehen")
+M2.years = unname(M2.years$Phase)
+
+
+# load data in wide format
+M1 = read.xlsx("M1M2.xlsx","M1", startRow = 4)
+M2 = read.xlsx("M1M2.xlsx","M2", startRow = 4)
+
+# remove unnecessary columns (additional Hochschule columns)
+M1 = M1[,-grep("^X",colnames(M1))]
+M2 = M2[,-grep("^X",colnames(M2))]
+
+# concatenate wide to long format and add year
+for (v in 1:length(variables.M1)) {
+  eval(parse(text=paste0(variables.M1[v]," = NULL")))
+}
+for (v in 1:length(variables.M2)) {
+  eval(parse(text=paste0(variables.M2[v]," = NULL")))
+}
+Hochschule_M1 = NULL
+Hochschule_M2 = NULL
+Jahr_M1 = NULL
+Jahr_M2 = NULL
+for (y in seq_along(M1.years)) {
+  for (v in 1:length(variables.M1)) {
+    eval(parse(text=paste0(variables.M1[v]," = c(",variables.M1[v],", M1[,\"",paste0(variables.M1[v],'_',M1.years[y]),"\"])")))
+  } 
+  Jahr_M1 = c(Jahr_M1,rep(M1.years[y],dim(M1)[1]))
+  Hochschule_M1 = c(Hochschule_M1, M1$Hochschule)
+}
+
+for (y in seq_along(M2.years)) {
+  for (v in 1:length(variables.M2)) {
+    eval(parse(text=paste0(variables.M2[v]," = c(",variables.M2[v],", M2[,\"",paste0(variables.M2[v],'_',M2.years[y]),"\"])")))
+  }
+  Jahr_M2 = c(Jahr_M2,rep(M2.years[y],dim(M2)[1]))
+  Hochschule_M2 = c(Hochschule_M2, M2$Hochschule)
+}
+
+eval(parse(text=paste0("M1.long = data.frame(Hochschule = Hochschule_M1, Jahr = Jahr_M1, ", paste0(variables.M1," = ",variables.M1,collapse = ", "),")")))
+eval(parse(text=paste0("M2.long = data.frame(Hochschule = Hochschule_M2, Jahr = Jahr_M2, ", paste0(variables.M2," = ",variables.M2,collapse = ", "),")")))
+
+# add z-scores
+msd1 <- dplyr::filter(M1.long, Hochschule == "Gesamt") %>% select(Jahr, MW_ges_abs_M1, MW_ref_abs_M1, SD_ges_M1, SD_ref_M1)
+M1.long$z_M1_ges  <- M1.long$z_M1_ref <-   NA
+for (i in 1:dim(M1.long)[1]) {
+  M1.long$z_M1_ges[i] = (M1.long$MW_ges_abs_M1[i] - msd1$MW_ges_abs_M1[which(msd1$Jahr == M1.long$Jahr[i])])/msd1$SD_ges_M1[which(msd1$Jahr == M1.long$Jahr[i])] * 100 + 500
+  M1.long$z_M1_ref[i] = (M1.long$MW_ref_abs_M1[i] - msd1$MW_ref_abs_M1[which(msd1$Jahr == M1.long$Jahr[i])])/msd1$SD_ref_M1[which(msd1$Jahr == M1.long$Jahr[i])] * 100 + 500
+}
+
+msd2 <- dplyr::filter(M2.long, Hochschule == "Gesamt") %>% select(Jahr, MW_ges_abs_M2, MW_ref_abs_M2, SD_ges_M2, SD_ref_M2)
+M2.long$z_M2_ges  <- M2.long$z_M2_ref <-   NA
+for (i in 1:dim(M2.long)[1]) {
+  M2.long$z_M2_ges[i] = (M2.long$MW_ges_abs_M2[i] - msd2$MW_ges_abs_M2[which(msd2$Jahr == M2.long$Jahr[i])])/msd2$SD_ges_M2[which(msd2$Jahr == M2.long$Jahr[i])] * 100 + 500
+  M2.long$z_M2_ref[i] = (M2.long$MW_ref_abs_M2[i] - msd2$MW_ref_abs_M2[which(msd2$Jahr == M2.long$Jahr[i])])/msd2$SD_ref_M2[which(msd2$Jahr == M2.long$Jahr[i])] * 100 + 500
+}
+
+# remove "Gesamt" before ranking
+M1.long.rank = filter(M1.long, Hochschule != "Gesamt")
+M2.long.rank = filter(M2.long, Hochschule != "Gesamt")
+
+# sort and rank
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_MW_M1_ges = rank(-MW_ges_rel_M1, na.last = "keep"))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_MW_M1_ref = rank(-MW_ref_rel_M1, na.last = "keep"))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_Anat = rank(-Anat_M1, na.last = "keep"))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_Biol = rank(-Biol_M1, na.last = "keep"))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_Chem = rank(-Chem_M1, na.last = "keep"))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_Physik = rank(-Physik_M1, na.last = "keep"))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_Physio = rank(-Physio_M1, na.last = "keep"))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(Rang_Psych = rank(-Psych_M1, na.last = "keep"))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>% mutate(Rang_MW_M2_ges = rank(-MW_ges_rel_M2, na.last = "keep"))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>% mutate(Rang_MW_M2_ref = rank(-MW_ref_rel_M2, na.last = "keep"))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>% mutate(Rang_Fall = rank(-Fall_M2, na.last = "keep"))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>%  mutate(Rang_Einz = rank(-Einz_M2, na.last = "keep"))
+
+# percent ranks
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_MW_M1_ges = 100 * percent_rank(-MW_ges_rel_M1))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_MW_M1_ref = 100 * percent_rank(-MW_ref_rel_M1))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_Anat = 100 * percent_rank(-Anat_M1))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_Biol = 100 * percent_rank(-Biol_M1))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_Chem = 100 * percent_rank(-Chem_M1))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_Physik = 100 * percent_rank(-Physik_M1))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_Physio = 100 * percent_rank(-Physio_M1))
+M1.long.rank = group_by(M1.long.rank, Jahr) %>% mutate(P_Rang_Psych = 100 * percent_rank(-Psych_M1))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>% mutate(P_Rang_MW_M2_ges = 100 * percent_rank(-MW_ges_rel_M2))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>% mutate(P_Rang_MW_M2_ref = 100 * percent_rank(-MW_ref_rel_M2))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>% mutate(P_Rang_Einz = 100 * percent_rank(-Einz_M2))
+M2.long.rank = group_by(M2.long.rank, Jahr) %>% mutate(P_Rang_Fall = 100 * percent_rank(-Fall_M2))
+
+# merge afterwards
+M1.long = rbind(M1.long.rank, filter(M1.long, Hochschule == "Gesamt"))
+M2.long = rbind(M2.long.rank, filter(M2.long, Hochschule == "Gesamt"))
+allData.long = merge(M1.long, M2.long, by = c("Hochschule", "Jahr"), all = T)
+
+# for data selection in graphs
+sharedData.long <- highlight_key(allData.long, ~Hochschule, group = "Hervorgehobene Hochschule(n):")
+
+# Bestehensgrenzen:
+M1.pass = read.xlsx("M1M2.xlsx", sheet = "M1_Bestehen", startRow = 2)
+names(M1.pass)[4:5] = c("M1_pass", "Jahr")
+M2.pass = read.xlsx("M1M2.xlsx", sheet = "M2_Bestehen")
+names(M2.pass)[4:5] = c("M2_pass", "Jahr")
+M2.pass$Anteil.Fallstudien = M2.pass$Anteil.Fallstudien * 100
+all.pass = data.frame(Jahr = c(M1.pass$Jahr, M2.pass$Jahr), Bestehensgrenze = c(M1.pass$M1_pass, M2.pass$M2_pass) * 100, Prüfung = c(rep("M1", dim(M1.pass)[1]), rep("M2", dim(M2.pass)[1])))
+
+# Fachbereiche:
+Fachbereiche_nm = c("Anatomie", "Biologie", "Chemie und Biochemie/Molekularbiologie", "Physik", "Physiologie", "Psychologie/Soziologie")
+Fachbereiche = data.frame(Jahr = rep(M1.pass$Jahr, 6), Fachbereich = rep(Fachbereiche_nm, each = dim(M1.pass)[1]), Anteil = c(unlist(M1.pass[12]), unlist(M1.pass[13]), unlist(M1.pass[14]), unlist(M1.pass[15]), unlist(M1.pass[16]), unlist(M1.pass[17])) * 100)
+Fachbereiche = group_by(Fachbereiche, Jahr) %>% mutate(pos = cumsum(Anteil) - 0.5*Anteil)
+# Fachbereiche$Fachbereich = fct_rev(Fachbereiche$Fachbereich) # only for ggplot
+```
+
+# Einführende Bemerkungen
+## Datenherkunft und Aufbereitung
+Die hier dargestellten Daten wurden von der Website des Instituts für medizinische und pharmazeutische Prüfungsfragen (IMPP) aus den PDF-Dokumenten vor allem des [Archivs](https://www.impp.de/pruefungen/medizin/archiv-medizin.html) entnommen (ab Herbst 2016, da vorher teilweise noch M2-Prüfungen nach der alten Approbationsordnung von 2002 abgelegt wurden). 
+Die Aufbereitung erfolgte mittels Microsoft Excel (Übertragung der Daten aus den PDF-Dateien nach Umformatierung mit Notepad++) und R-Studio. Der Quelltext dazu wird demnächst auf Github veröffentlicht. 
+
+## Hinweise zu den Übersichtsgrafiken
+* Die Prüfungsphasen werden neben dem Jahr in Frühjahr (F) und Herbst (H) unterschieden - die Buchstaben entsprechend angehängt.
+* Gesamtmittelwerte werden unter dem Hochschulstandort "Gesamt" geführt. 
+* Zahlreiche Werkzeuge bspw. zur Vergrößerung (zoom) oder Rücksetzung (Haussymbol) befinden sich rechts oberhalb der Grafik, wenn man mit der Maus im Bereich der Grafik ist. 
+* Belässt man den Mauszeiger über den Punkten, werden die entsprechenden Werte angezeigt; Vergleiche mehrerer Hochschulstandorte können angezeigt werden, indem das rechte Symbol angeklickt wird (zwei Fahnen übereinander mit dem Tooltip "Compare data on hover") - dazu bitte eine sinnvolle Vorauswahl weniger Hochschulstandorte treffen:
+* In der Legende (am rechten Rand scrollen, um alle Standorte anzuzeigen) lassen sich 
+  + durch _einfachen Klick_ auf die Namen Hoschulstandorte ein- bzw. ausblenden 
+  + durch _Doppelklick_ ausschließlich darstellen.
+
+Da initial alle Daten dargestellt werden, empfiehlt sich die *Hervorhebung* einzelner Hochschulstandorte im ersten Auswahlfeld  (d. h. die _anderen_ Datensätze werden _ausgegraut_). Das [Auswahlfeld](#auswahl) hierfür befindet sich über der ersten Grafik (aus technischen Gründen fehlen die Einträge bei den darauffolgenden Grafiken). Voreingestellt sind "Gesamt" und Würzburg (bei den Rangfolgen entfällt die Darstellung für "Gesamt"). Nach Klick auf die Einträge können diese gelöscht bzw. durch Eingabe / Auswahl aus der Liste weitere Standorte hinzugefügt werden, die dann hervorgehoben werden. Die Auswahl hier hat Auswirkungen auf _alle Darstellungen_, weshalb mit einer kurzen Wartezeit zu rechnen ist.
+
+Alternativ kann auch folgender Ablauf für den Vergleich der Werte _einer_ Hochschule mit dem _Gesamtwert_ oder anderer Hochschulstandorte befolgt werden:
+
+1. Doppelklick auf interessierende Hochschule
+
+2. Klick auf Gesamt
+
+[3. Klick auf weitere Hochschule(n)]
+
+## Referenzgruppe
+Die Grenze für das Bestehen der Prüfung  orientiert sich an der durchschnittlichen Prüfungsleistung aller ErstteilnehmerInnen mit der Mindeststudienzeit, der sog. Referenzgruppe: mindestens 60 % der Prüfungsfragen oder nicht weniger als 78 % der durchschnittlichen Prüfungsleistung der Referenzgruppe (ÄAppO, §14, Abs. 6).
+
+Die Bestehensgrenzen ergeben sich dann unter Berücksichtigung der gewerteten Aufgaben wie folgt:
+
+`r ggplotly(ggplot(all.pass, aes(x = Jahr, y = Bestehensgrenze, col = Prüfung, group = Prüfung)) + geom_line() + geom_point())`
+
+# Standardisierte Mittelwerte
+Der hochschulspezifischen Examens- und Aufgabenanalyse des IMPP folgend, werden auch standardisierte Mittelwerte für [M1](#zM1) und [M2](#zM2) dargestellt:
+
+"Die Standardwerte „Z“ werden aus den Rohpunktwerten „X“ nach folgender Formel berechnet: Z = (X - M) / S ⋅ 100 + 500. Dabei ist M das arithmetische Mittel und S die Standardabweichung der Verteilung der Rohpunktwerte aller Examensteilnehmer eines jeweiligen Prüfungstermins. Die so ermittelten standardisierten Rohpunktwerte weisen einen Mittelwert von 500 und eine Standardabweichung von 100 auf. Die standardisierten Werte ermöglichen die unmittelbare Einordnung, ob es sich um einen überdurchschnittlichen oder unterdurchschnittlichen Standardwert (hier die durchschnittliche Prüfungsleistung der Teilnehmer einer Fakultät im Vergleich zum Bundesdurchschnitt) handelt."
+  
+## Erläuterungen zur Rangdarstellung
+Der Rang wird bezüglich aller Standorte mit mehr als einem Teilnehmenden angegeben (aus Datenschutzgründen werden seitens des IMPP sonst keine Einzeldaten angegeben, aber im Gesamtmittelwert berücksichtigt). 
+
+Bei der Rangfolge finden Sie zwei verschiedene Darstellungen:
+
+*	absolut (d. h. 1. Platz mit höchstem Mittelwert usw.; bei Punktgleichheit werden auch nicht ganzzahlige Ränge vergeben; skaliert von 1 bis zum schlechtest möglichen Rangplatz)
+*	als Prozentrang, der die Verteilung der Mittelwerte im Hochschulvergleich in Hundertstelwerte einordnet (d. h. der Wert gibt an, wie viel Prozent aller Hochschulen darunter liegen - bspw. Prozentrang 5 => nur 5 % der Hochschulen haben das gleiche bzw. bessere Ergebnisse erzielt; Skalierung von 0 bis 100 %).
+
+## Weitere Hinweise
+Bei M1 werden zusätzlich die Fachergebnisse dargestellt, bei M2 lediglich die Unterscheidung in Fallstudien vs. Einzelaufgaben, da es hier keine veröffentlichte Fachzuordnung gibt.
+
+Zu beachten ist ein saisonaler Effekt (Frühjahr vs. Herbst). Dieser wird bedingt durch weniger Standorte mit Zulassung im Frühjahr.
+
+# Erster Abschnitt der ärztlichen Prüfung (M1, schriftlicher Teil)
+## Prüfungsteilnehmende und Misserfolge
+### Alle Prüflinge{#auswahl}
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=TN_ges_M1, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Prüfungsteilnehmende (gesamt)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ges_abs_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Misserfolge (absolut)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ges_rel_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Miserfolge (Prozent)") + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+
+### Erstteilnehmende (Referenzgruppe)
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=TN_ref_M1, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Prüfungsteilnehmende (Referenz)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ref_abs_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Misserfolge (absolut)") + geom_point() + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ref_rel_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Miserfolge (Prozent)") + geom_point() + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+
+## Standardisierte Mittelwerte{#zM1}
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=z_M1_ges, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Standardisierte Mittelwerte") + xlab("Prüfungsphase") + ggtitle("alle Prüflinge"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=z_M1_ref, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Standardisierte Mittelwerte") + xlab("Prüfungsphase") + ggtitle("Referenzgruppe"))
+```
+
+## Gesamtmittelwerte (in Prozent und nach Rang) für alle Prüfungsteilnehmenden
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+# prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ges_rel_M1, col = Hochschule, group = Hochschule)) + geom_errorbar(aes(ymin=MW_ges_rel_M1-SD_ges_M1, ymax=MW_ges_rel_M1+SD_ges_M1), width=.2) + geom_line(alpha=.5) + geom_point() + ylab("Mittelwert (%) und Standardabweichung") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ges_rel_M1, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Mittelwert (%)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_MW_M1_ges, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Mittelwert") + geom_text(aes(label=Rang_MW_M1_ges)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_MW_M1_ges, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Mittelwert") + geom_text(aes(label=round(P_Rang_MW_M1_ges,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+## Gesamtmittelwerte (in Prozent und nach Rang) für Erstteilnehmende (Referenzgruppe)
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+# prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ref_rel_M1, col = Hochschule, group=Hochschule)) + geom_errorbar(aes(ymin=MW_ref_rel_M1-SD_ref_M1, ymax=MW_ref_rel_M1+SD_ref_M1), width=.2) + geom_line(alpha=.5) + geom_point() + ylab("Mittelwert (%) und Standardabweichung") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ref_rel_M1, col = Hochschule, group=Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Mittelwert (%)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_MW_M1_ref, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Mittelwert") + geom_text(aes(label=Rang_MW_M1_ref)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_MW_M1_ref, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Mittelwert") + geom_text(aes(label=round(P_Rang_MW_M1_ref,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+
+
+## Fachergebnisse (in Prozent und nach Rang)
+### Anteile der Fächer
+Der Anteil der Fächer variiert nur leicht und liegt im Mittel bei folgenden Werten:
+
+`r knitr::kable(Fachbereiche %>% group_by(Fachbereich) %>% summarise(Anteil = round(mean(Anteil),1)), row.names = F, col.names = c("Fachbereich", "mittlerer Anteil (%)")) %>% kableExtra::kable_styling(position = "left", "striped", full_width = F)`
+
+<!-- ggplotly(ggplot(Fachbereiche, aes(x = Jahr, y = Anteil, group = Fachbereich, fill = Fachbereich)) + geom_bar(stat = "identity", position = "stack") + ylab("Anteil (%)") + geom_text(aes(label=ifelse(Anteil >= 10, sprintf("%.0f", Anteil), ""), y = pos), colour = "black"), tooltip = c("fill", "y")) %>% layout(legend = list(orientation = 'h', position = "bottom", traceorder = "normal", title = list(text = "Fachbereich"))) -->
+
+`r plot_ly(data = Fachbereiche, x = ~Jahr, y = ~Anteil, split = ~Fachbereich, type = "bar", textposition = "none", text = paste0('Fachbereich: ', Fachbereiche$Fachbereich, '\nAnteil: ', round(Fachbereiche$Anteil, 1), ' %'), hovertemplate = "%{text}<extra></extra>") %>% layout(legend = list(orientation = 'h', position = "bottom", traceorder = "normal", title = list(text = "Fachbereich"), x = 0, y = -0.2), yaxis = list(title = list(text = "Anteil (%)")), barmode = 'stack')`
+
+<!-- %>% add_annotations(x = Fachbereiche$Jahr, y = Fachbereiche$pos, text = ifelse(Fachbereiche$Anteil >= 10, sprintf("%.0f", Fachbereiche$Anteil), ""), showarrow = F,  texttemplate = "<b>%{text}</b>") -->
+
+### Anatomie
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Anat_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Fachergebnisse Anatomie (%)") + geom_point() + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Anat, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Fachergebnisse\nAnatomie") + geom_text(aes(label=Rang_Anat)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Anat, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Fachergebnisse\nAnatomie") + geom_text(aes(label=round(P_Rang_Anat,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+### Biologie
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Biol_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Fachergebnisse Biologie (%)") + geom_point() + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Biol, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Fachergebnisse\nBiologie") + geom_text(aes(label=Rang_Biol)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Biol, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Fachergebnisse\nBiologie") + geom_text(aes(label=round(P_Rang_Biol,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+### Chemie und Biochemie/Molekularbiologie
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Chem_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Fachergebnisse Chemie und Biochemie/Molekularbiologie (%)") + geom_point() + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Chem, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Fachergebnisse\nChemie und Biochemie/Molekularbiologie") + geom_text(aes(label=Rang_Chem)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Chem, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Fachergebnisse\nChemie und Biochemie/Molekularbiologie") + ylim(c(0,100)) + geom_text(aes(label=round(P_Rang_Chem,0))) + xlab("Prüfungsphase"))
+```
+### Physik
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Physik_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Fachergebnisse Physik (%)") + geom_point() + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Physik, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Fachergebnisse\nPhysik") + geom_text(aes(label=Rang_Physik)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Physik, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Fachergebnisse\nPhysik") + geom_text(aes(label=round(P_Rang_Physik,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+### Physiologie
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Physio_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Fachergebnisse Physiologie (%)") + geom_point() + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Physio, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Fachergebnisse\nPhysiologie") + geom_text(aes(label=Rang_Physio)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Physio, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Fachergebnisse\nPhysiologie") + geom_text(aes(label=round(P_Rang_Physio,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+### Psychlogie/Soziologie
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Psych_M1, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Fachergebnisse Psychlogie/Soziologie (%)") + geom_point() + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Psych, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Fachergebnisse\nPsychlogie/Soziologie") + geom_text(aes(label=Rang_Psych)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Psych, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Fachergebnisse\nPsychlogie/Soziologie") + geom_text(aes(label=round(P_Rang_Psych,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+
+```
+
+# Zweiter Abschnitt der Ärztlichen Prüfung (M2)
+## Prüfungsteilnehmende und Misserfolge
+### Alle Prüflinge
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=TN_ges_M2, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Prüfungsteilnehmende (gesamt)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=TN_ref_M2, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Prüfungsteilnehmende (Referenz)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ges_abs_M2, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Misserfolge (absolut)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ges_rel_M2, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Miserfolge (Prozent)") + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+
+### Erstteilnehmende (Referenzgruppe)
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=TN_ref_M2, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Prüfungsteilnehmende (Referenz)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ref_abs_M2, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Misserfolge (absolut)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Miss_ref_rel_M2, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Miserfolge (Prozent)") + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+
+## Standardisierte Mittelwerte{#zM2}
+```{r echo=FALSE, fig.width=12, message=FALSE, results="asis"}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=z_M2_ges, col = Hochschule, group = Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Standardisierte Mittelwerte") + xlab("Prüfungsphase") + ggtitle("alle Prüflinge"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=z_M2_ref, col = Hochschule, group = Hochschule)) +  geom_line(alpha=.5) + geom_point() + ylab("Standardisierte Mittelwerte") + xlab("Prüfungsphase") + ggtitle("Referenzgruppe"))
+```
+
+## Gesamtmittelwerte (in Prozent und nach Rang) für alle Prüfungsteilnehmenden
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+# prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ges_rel_M2, col = Hochschule, group=Hochschule)) + geom_errorbar(aes(ymin=MW_ges_rel_M2-SD_ges_M2, ymax=MW_ges_rel_M2+SD_ges_M2), width=.2) + geom_line(alpha=.5) + geom_point() + ylab("Gesamtmittelwert (%) und Standardabweichung") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ges_rel_M2, col = Hochschule, group=Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Gesamtmittelwert (%)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_MW_M2_ges, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Mittelwert") + geom_text(aes(label=Rang_MW_M2_ges)) +  xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_MW_M2_ges, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Mittelwert") + geom_text(aes(label=round(P_Rang_MW_M2_ges,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+## Gesamtmittelwerte (in Prozent und nach Rang) für Erstteilnehmende
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+# prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ges_rel_M2, col = Hochschule, group=Hochschule)) + geom_errorbar(aes(ymin=MW_ref_rel_M2-SD_ref_M2, ymax=MW_ref_rel_M2+SD_ref_M2), width=.2) + geom_line(alpha=.5) + geom_point() + ylab("Gesamtmittelwert (%) und Standardabweichung") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=MW_ges_rel_M2, col = Hochschule, group=Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Gesamtmittelwert (%)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_MW_M2_ref, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Mittelwert") + geom_text(aes(label=Rang_MW_M2_ref)) +  xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_MW_M2_ref, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Mittelwert") + geom_text(aes(label=round(P_Rang_MW_M2_ref,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+
+## Gesamtmittelwerte und Rangfolgen nach Fallstudien und Einzelaufgaben
+### Fallstudien
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+ggplotly(ggplot(M2.pass, aes(x = Jahr, y = Anteil.Fallstudien, group = NA)) + geom_line() + geom_point() + ylab("Anteil Fallstudien (%)"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Fall_M2, col = Hochschule, group=Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Mittelwert der Fallstudien (%)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Fall, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Fallstudien") + geom_text(aes(label=Rang_Fall)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Fall, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Fallstudien") + geom_text(aes(label=round(P_Rang_Fall,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
+### Einzelaufgaben
+
+```{r echo = FALSE, results = "asis", fig.width=12, message=FALSE}
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Einz_M2, col = Hochschule, group=Hochschule)) + geom_line(alpha=.5) + geom_point() + ylab("Mittelwert der Einzelaufgaben (%)") + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=Rang_Einz, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Absolutrang bzgl. Einzelaufgaben") + geom_text(aes(label=Rang_Einz)) + xlab("Prüfungsphase"))
+
+prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_Einz, group = Hochschule, col = Hochschule)) + geom_line(alpha=.5) + ylab("Prozentrang bzgl. Einzelaufgaben") + geom_text(aes(label=round(P_Rang_Einz,0))) + ylim(c(0,100)) + xlab("Prüfungsphase"))
+```
