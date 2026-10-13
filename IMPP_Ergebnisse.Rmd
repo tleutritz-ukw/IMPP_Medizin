@@ -143,7 +143,7 @@ Fachbereiche = group_by(Fachbereiche, Jahr) %>% mutate(pos = cumsum(Anteil) - 0.
 
 # Einführende Bemerkungen
 ## Datenherkunft und Aufbereitung
-Die hier dargestellten Daten wurden von der Website des Instituts für medizinische und pharmazeutische Prüfungsfragen (IMPP) aus den PDF-Dokumenten vor allem des [Archivs](https://www.impp.de/pruefungen/medizin/archiv-medizin.html) entnommen (ab Herbst 2016, da vorher teilweise noch M2-Prüfungen nach der alten Approbationsordnung von 2002 abgelegt wurden). 
+Die hier dargestellten Daten wurden von der Website des Instituts für medizinische und pharmazeutische Prüfungsfragen (IMPP) aus den PDF-Dokumenten vor allem des [Archivs](https://www.impp.de/pruefungen/medizin/archiv-medizin.html) entnommen (ab Frühjahr 2016, da vorher teilweise noch M2-Prüfungen nach der alten Approbationsordnung von 2002 abgelegt wurden). 
 Die Aufbereitung erfolgte mittels Microsoft Excel (Übertragung der Daten aus den PDF-Dateien nach Umformatierung mit Notepad++) und R-Studio. Der Quelltext dazu wird demnächst auf Github veröffentlicht. 
 
 ## Hinweise zu den Übersichtsgrafiken
@@ -243,7 +243,7 @@ prop_plot(ggplot(sharedData.long, aes(x=Jahr, y=P_Rang_MW_M1_ref, group = Hochsc
 ### Anteile der Fächer
 Der Anteil der Fächer variiert nur leicht und liegt im Mittel bei folgenden Werten:
 
-`r knitr::kable(Fachbereiche %>% group_by(Fachbereich) %>% summarise(Anteil = round(mean(Anteil),1)), row.names = F, col.names = c("Fachbereich", "mittlerer Anteil (%)")) %>% kableExtra::kable_styling(position = "left", "striped", full_width = F)`
+`r knitr::kable(Fachbereiche %>% group_by(Fachbereich) %>% summarise(Anteil = round(mean(Anteil, na.rm = T),1)), row.names = F, col.names = c("Fachbereich", "mittlerer Anteil (%)")) %>% kableExtra::kable_styling(position = "left", "striped", full_width = F)`
 
 <!-- ggplotly(ggplot(Fachbereiche, aes(x = Jahr, y = Anteil, group = Fachbereich, fill = Fachbereich)) + geom_bar(stat = "identity", position = "stack") + ylab("Anteil (%)") + geom_text(aes(label=ifelse(Anteil >= 10, sprintf("%.0f", Anteil), ""), y = pos), colour = "black"), tooltip = c("fill", "y")) %>% layout(legend = list(orientation = 'h', position = "bottom", traceorder = "normal", title = list(text = "Fachbereich"))) -->
 
