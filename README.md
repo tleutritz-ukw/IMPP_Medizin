@@ -1,5 +1,5 @@
 # IMPP_Medizin
-Darstellung der Ergebnisse von des ersten (M1) und zweiten (M2) Abschnitts der ärztlichen Prüfung in ausführlicher und interaktiver Weise für den Vergleich von Ergebnissen an verschiedenen Hochschulstandorten (Würzburg als REferenzstandort voreingestellt).
+[Darstellung der Ergebnisse](./IMPP_Ergebnisse.html) von des ersten (M1) und zweiten (M2) Abschnitts der ärztlichen Prüfung in ausführlicher und interaktiver Weise für den Vergleich von Ergebnissen an verschiedenen Hochschulstandorten (Würzburg als Referenzstandort voreingestellt).
 
 Aktuelle Daten zu Prüfungsergebnissen im Fach Medizin vom [IMPP](https://www.impp.de/pruefungen/medizin/l%C3%B6sungen-und-ergebnisse.html) bzw. aus dem [Archiv](https://www.impp.de/pruefungen/medizin/archiv-medizin.html) - manuell aus den PDF-Dateien kopiert und im Notepad++-Editor Leerzeichen durch Tabulatoren ersetzt mit folgenden regulären Ausdrücken: 
 
